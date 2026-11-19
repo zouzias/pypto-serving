@@ -236,6 +236,17 @@ def load_tokenizer(model_dir: str | Path, *, trust_remote_code: bool = False) ->
     elif family == "glm53":
         adapter_cls = Glm53TokenizerAdapter
     else:
+        # Qwen3.8 (model_type "qwen3_5") lands here deliberately, and needs no adapter of its
+        # own: transformers already aliases the reasoning field Qwen3-14B's adapter renames,
+        # and declaring no output parser is what makes Serving reject a tools request up front.
+        #
+        # Do not route it to Qwen3TokenizerAdapter to "enable" tool calls. Qwen3.8 emits
+        # <tool_call><function=NAME><parameter=KEY>value</parameter></function></tool_call>,
+        # while Qwen3ToolParser hands that body to json.loads, so every call would raise
+        # part-way through a generation that had already been paid for. Qwen3.8's shape is the
+        # one serving/reasoning/deepseek_v4_tools.py parses, so a parser for it belongs beside
+        # that one -- and needs the request's parameter types, which OutputParserSpec does not
+        # carry, because <parameter=KEY> has no inline type tag the way DSML's string= does.
         adapter_cls = TransformersTokenizerAdapter
     if (model_path / "tokenizer.json").exists():
         adapter = adapter_cls.from_tokenizer_file(str(model_path))

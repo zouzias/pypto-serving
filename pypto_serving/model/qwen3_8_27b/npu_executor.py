@@ -153,7 +153,7 @@ class Qwen38PyptoExecutor(CorePyptoExecutor):
 
     def _create_runner(self, model_id: str, compiled: object):
         """Attach the model's compiled resources to its single-device runner."""
-        from pypto_serving.model.qwen3_8_27b.model_runner import Qwen38ModelRunner
+        from pypto_serving.model.qwen3_8_27b.npu_runner import Qwen38ModelRunner
 
         return Qwen38ModelRunner(model_id=model_id, compiled=compiled, device_id=self._device_ids[0])
 
