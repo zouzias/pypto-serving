@@ -129,15 +129,13 @@ class Qwen38PyptoExecutor(CorePyptoExecutor):
         *,
         platform: str = "a2a3sim",
         device_ids: Sequence[int] = (0,),
-        pypto_build_dir: str = "build_output",
-        use_compile_cache: bool = False,
+        pypto_build_dir: str | None = None,
     ) -> None:
         super().__init__(
             kv_cache_manager,
             platform=platform,
             device_ids=device_ids,
             pypto_build_dir=pypto_build_dir,
-            use_compile_cache=use_compile_cache,
         )
         if len(self._device_ids) != 1:
             raise ValueError("Qwen3.8 kernels currently run on one NPU per replica")
@@ -147,7 +145,6 @@ class Qwen38PyptoExecutor(CorePyptoExecutor):
                 device_ids=self._device_ids,
                 pypto_build_dir=self._pypto_build_dir,
             ),
-            cache_dir=self._pypto_build_dir,
         )
 
     @property
@@ -205,7 +202,6 @@ class Qwen38PyptoExecutor(CorePyptoExecutor):
                         kv_layer_stride=layout.kv_layer_stride,
                         state_count=layout.conv_pool_shape[0],
                     ),
-                    use_cache=self._use_compile_cache,
                 )
             decode_fwd_by_rows = {}
             for rows in (layout.decode_batch_pad, *range(1, min(2, layout.max_batch_size) + 1)):
@@ -220,17 +216,14 @@ class Qwen38PyptoExecutor(CorePyptoExecutor):
                         kv_rows=layout.kv_pool_shape[0], state_count=layout.conv_pool_shape[0],
                         active_rows=active_rows,
                     ),
-                    use_cache=self._use_compile_cache,
                 )
             embedding = self._compiler.compile(
                 "qwen38_decode_embedding",
                 embedding_module.build_l3_kernel(layout.decode_batch_pad),
-                use_cache=self._use_compile_cache,
             )
             final_head = self._compiler.compile(
                 "qwen38_decode_final_head",
                 head_module.build_l3_kernel(layout.decode_batch_pad),
-                use_cache=self._use_compile_cache,
             )
 
         model_dir = model.extra.get("model_dir")

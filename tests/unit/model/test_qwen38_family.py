@@ -190,18 +190,19 @@ def test_executor_builds_all_kernel_entries_without_loading_full_checkpoint(monk
             return result
 
     class Compiler:
-        def __init__(self):
+        def __init__(self, *, run_config):
+            assert run_config.save_kernels_dir is None
             self.names = []
 
-        def compile(self, name, kernel, **_kwargs):
+        def compile(self, name, kernel):
             assert kernel is not None
             self.names.append(name)
             return name
 
     monkeypatch.setattr(executor_module, "Qwen38WeightStore", TinyStore)
-    compiler = Compiler()
-    executor = SimpleNamespace(_compiler=compiler, _use_compile_cache=False,
-                               _validate_model=executor_module.Qwen38PyptoExecutor._validate_model)
+    monkeypatch.setattr(executor_module, "KernelCompiler", Compiler)
+    executor = executor_module.Qwen38PyptoExecutor()
+    compiler = executor._compiler
     runtime = model_loader.RuntimeConfig(
         page_size=128, max_seq_len=2048, max_batch_size=16,
         max_num_batched_tokens=2048, max_prefill_tokens_per_request=2048,
@@ -213,7 +214,7 @@ def test_executor_builds_all_kernel_entries_without_loading_full_checkpoint(monk
         runtime=runtime,
         extra={"family": "qwen3_8_27b", "model_dir": "unused", "weight_map": {}},
     )
-    compiled = executor_module.Qwen38PyptoExecutor._compile_model(executor, model)
+    compiled = executor._compile_model(model)
     assert set(compiled.prefill_by_rows) == set(range(1, 9))
     assert compiler.names[:8] == [
         f"qwen38_prefill_text_packed_t2048_r{rows}_p16_k34816_s832" for rows in range(1, 9)

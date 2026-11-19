@@ -21,9 +21,9 @@ staging, request metadata, cache allocation and dispatch.
 Initialize the bundled submodule as described in
 [Installation](../get-started/installation.md). To select another compatible
 checkout, set `PYPTO_LIB_ROOT=/path/to/pypto-lib` before starting the process.
-After changing kernel sources or dispatch shapes, use a new build directory
-or leave `--use-compile-cache` disabled; the compile cache does not fingerprint
-sources.
+Serving inherits [PyPTO's persistent JIT cache policy](../developer-guide/jit-cache.md).
+Set `PYPTO_CACHE=0` to disable reuse or set `PYPTO_PROG_BUILD_DIR` to save
+diagnostic build output.
 
 ## Offline generation
 
