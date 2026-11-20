@@ -103,6 +103,7 @@ nav:
   - Models:
       - Overview: models/index.md
       - Qwen3-14B: models/qwen3-14b.md
+      - Qwen3.8-27B W8A8: models/qwen3-8-27b.md
       - GLM-5.3-Flash: models/glm53.md
       - GLM-5.3-Flash Optimization: models/glm53-optimization.md
       - DeepSeek V4:

@@ -140,17 +140,21 @@ class EngineConfig:
         runtime = self.runtime_config or RuntimeConfig()
         if runtime.chip_runtime != "tensormap_and_ringbuffer" and self.executor_cls != "PyptoQwen14BExecutor":
             raise ValueError("host_build_graph serving currently requires PyptoQwen14BExecutor")
-        is_deepseek_v4 = self.executor_cls == "PyptoDeepSeekV4Executor"
+        # Qwen3.8 needs the full token budget to fill its fused prefill extent.
+        separate_phases = self.executor_cls in ("PyptoDeepSeekV4Executor", "PyptoQwen38Executor")
         homogeneous_prefill_decode = (
-            runtime.requires_homogeneous_prefill_decode or is_deepseek_v4
+            runtime.requires_homogeneous_prefill_decode or separate_phases
         )
+        preserve_prefill_chunks = runtime.preserve_prefill_chunks or self.executor_cls == "PyptoQwen38Executor"
         retention_interval = runtime.prefix_cache_retention_interval if self.enable_prefix_cache else 0
         if (runtime.requires_homogeneous_prefill_decode == homogeneous_prefill_decode
+                and runtime.preserve_prefill_chunks == preserve_prefill_chunks
                 and runtime.prefix_cache_retention_interval == retention_interval):
             return runtime
         return replace(
             runtime,
             requires_homogeneous_prefill_decode=homogeneous_prefill_decode,
+            preserve_prefill_chunks=preserve_prefill_chunks,
             prefix_cache_retention_interval=retention_interval,
         )
 
@@ -273,6 +277,7 @@ class ReplicaEngineCore:
             max_prefill_tokens_per_request=runtime.max_prefill_tokens_per_request,
             prefill_chunk_alignment=runtime.prefill_chunk_alignment,
             prefill_chunk_size_choices=runtime.prefill_chunk_size_choices,
+            preserve_prefill_chunks=runtime.preserve_prefill_chunks,
             max_seq_len=runtime.max_seq_len,
             enable_prefix_cache=self.config.enable_prefix_cache,
             enable_chunk_prefill=self.config.enable_chunk_prefill,

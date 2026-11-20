@@ -53,6 +53,7 @@ class SchedulerConfig:
     max_prefill_tokens_per_request: int | None = None
     prefill_chunk_alignment: int = 1
     prefill_chunk_size_choices: tuple[int, ...] = ()
+    preserve_prefill_chunks: bool = False
     max_seq_len: int = 4096
     # Feature flags
     enable_prefix_cache: bool = True
@@ -201,6 +202,12 @@ class Request:
 
     @property
     def num_new_tokens_needed(self) -> int:
+        # Pending outputs can already cover the length limit. Wait for their
+        # results instead of queuing a decode whose output would be discarded.
+        # Speculative reservations are upper bounds; reconciliation releases
+        # any rejected slots so the request can become schedulable again.
+        if len(self.output_token_ids) + self.num_output_placeholders >= self.max_new_tokens:
+            return 0
         return self.num_tokens - self.num_computed_tokens
 
     @property
@@ -819,6 +826,13 @@ class Scheduler:
         limit = token_budget
         if request.is_prefill:
             chunk_limit = self._prefill_chunk_limit()
+            full_chunk = min(chunk_limit or self.config.max_num_scheduled_tokens,
+                             self.config.max_num_scheduled_tokens)
+            if (self.config.preserve_prefill_chunks and needed >= full_chunk
+                    and token_budget < full_chunk):
+                # A short tail must not fragment another owner's fused chunk.
+                # Leave that owner for a step with enough budget for the chunk.
+                return 0
             if chunk_limit is not None:
                 limit = min(limit, chunk_limit)
             if self._requires_single_prefill_dispatch() and needed > limit:

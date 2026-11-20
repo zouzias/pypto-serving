@@ -14,12 +14,15 @@ import json
 import pytest
 
 from pypto_serving.model.deepseek.encoding import encode_messages
+from pypto_serving.model.model_family import detect_model_family
 from pypto_serving.model.qwen.encoding import Qwen3TokenizerAdapter
 from pypto_serving.model.tokenizer import (
     DeepSeekV4TokenizerAdapter,
+    TransformersTokenizerAdapter,
     _load_fast_tokenizer_from_file,
     load_tokenizer,
 )
+from pypto_serving.serving.reasoning.parser import supports_tool_calls
 
 
 def test_fast_tokenizer_load_preserves_checkpoint_chat_template(tmp_path):
@@ -70,6 +73,45 @@ def test_qwen3_checkpoint_selects_tool_parser(tmp_path, monkeypatch):
     monkeypatch.setattr(Qwen3TokenizerAdapter, "from_tokenizer_file", lambda path: adapter)
 
     assert load_tokenizer(tmp_path).output_parser_id == "qwen3"
+
+
+# The published Qwen3.8-27B config. model_type is "qwen3_5", so the branch above -- which
+# keys on model_type rather than on the family -- cannot claim this checkpoint.
+_QWEN38_CONFIG = {
+    "model_type": "qwen3_5",
+    "architectures": ["Qwen3_5ForConditionalGeneration"],
+    "text_config": {
+        "hidden_size": 5120,
+        "num_hidden_layers": 64,
+        "num_attention_heads": 24,
+        "linear_num_value_heads": 48,
+        "full_attention_interval": 4,
+    },
+}
+
+
+def test_qwen38_checkpoint_keeps_the_generic_adapter_and_no_tool_parser(tmp_path, monkeypatch):
+    """Qwen3.8 must keep falling through parser-less, however tempting its Qwen3 kinship.
+
+    Its chat template needs no adapter: transformers aliases the reasoning field itself. Its
+    tool calls are nested tags, not the JSON ``Qwen3ToolParser`` reads, so claiming the
+    ``"qwen3"`` parser would move the failure out of admission and into a paid-for
+    generation. Rejecting a tools request up front is the behaviour under test.
+    """
+    (tmp_path / "config.json").write_text(json.dumps(_QWEN38_CONFIG))
+    (tmp_path / "tokenizer.json").write_text("{}")
+    adapter = TransformersTokenizerAdapter(tokenizer=object())
+    monkeypatch.setattr(TransformersTokenizerAdapter, "from_tokenizer_file", lambda path: adapter)
+
+    # Assert the premise too: without this the test would pass for the wrong reason if
+    # detection ever stopped recognising the family.
+    assert detect_model_family(_QWEN38_CONFIG) == "qwen3_8_27b"
+
+    loaded = load_tokenizer(tmp_path)
+
+    assert loaded is adapter
+    assert loaded.output_parser_id is None
+    assert not supports_tool_calls(loaded.output_parser_id)
 
 
 def test_qwen3_tool_history_passes_reasoning_to_checkpoint_template():
